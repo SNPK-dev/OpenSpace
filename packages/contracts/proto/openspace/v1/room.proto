@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package openspace.v1;
+
+import "openspace/v1/common.proto";
+
+option go_package = "github.com/openspace/openspace/packages/contracts/gen/go/openspace/v1;openspacev1";
+
+enum RoomKind {
+  ROOM_KIND_UNSPECIFIED = 0;
+  ROOM_KIND_TEXT = 1;
+  ROOM_KIND_VOICE = 2;
+}
+
+message Room {
+  ResourceMeta meta = 1;
+  string category_id = 2;
+  string name = 3;
+  RoomKind kind = 4;
+  uint32 position = 5;
+  bool archived = 6;
+}

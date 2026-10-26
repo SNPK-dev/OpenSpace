@@ -1,0 +1,1 @@
+-- Moved to 020_add_pairing_tokens.sql

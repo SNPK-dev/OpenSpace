@@ -1,0 +1,11 @@
+{
+  "name": "@openspace/server-api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "go build ./...",
+    "lint": "go vet ./...",
+    "test": "go test ./...",
+    "typecheck": "go build ./..."
+  }
+}

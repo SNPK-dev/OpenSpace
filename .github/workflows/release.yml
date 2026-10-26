@@ -1,0 +1,323 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+  security-events: write
+
+jobs:
+  acceptance:
+    uses: ./.github/workflows/clean-host-acceptance.yml
+    with:
+      previous_release: ${{ vars.OPENSPACE_PREVIOUS_RELEASE }}
+
+  security:
+    uses: ./.github/workflows/security.yml
+    with:
+      require_external_review: true
+
+  verify:
+    needs: [acceptance, security]
+    runs-on: ubuntu-24.04
+    environment: release-client-review
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "22" }
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version: "1.27.3" }
+      - run: corepack enable && corepack prepare pnpm@11.21.0 --activate && pnpm install --frozen-lockfile
+      - run: node scripts/validate-release-version.mjs
+      - run: pnpm verify
+      - run: pnpm client:budgets
+      - name: Download client usability and assistive-technology evidence
+        env:
+          USABILITY_URL: ${{ vars.CLIENT_USABILITY_EVIDENCE_URL }}
+          USABILITY_SHA256: ${{ vars.CLIENT_USABILITY_EVIDENCE_SHA256 }}
+          NVDA_URL: ${{ vars.CLIENT_NVDA_EVIDENCE_URL }}
+          NVDA_SHA256: ${{ vars.CLIENT_NVDA_EVIDENCE_SHA256 }}
+        run: |
+          test -n "$USABILITY_URL" && test -n "$USABILITY_SHA256"
+          test -n "$NVDA_URL" && test -n "$NVDA_SHA256"
+          mkdir -p client-human-evidence
+          curl --proto '=https' --tlsv1.2 --fail --location "$USABILITY_URL" --output client-human-evidence/usability-session.json
+          curl --proto '=https' --tlsv1.2 --fail --location "$NVDA_URL" --output client-human-evidence/nvda-smoke.json
+          printf '%s  %s\n' "$USABILITY_SHA256" client-human-evidence/usability-session.json "$NVDA_SHA256" client-human-evidence/nvda-smoke.json | sha256sum -c -
+      - name: Require client usability and assistive-technology evidence
+        env:
+          REQUIRE_CLIENT_HUMAN_EVIDENCE: "1"
+        run: node scripts/validate-client-evidence.mjs client-human-evidence
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: client-human-evidence
+          path: client-human-evidence/
+          retention-days: 365
+      - run: node scripts/security/audit-supported-dependencies.mjs
+      - uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-filesystem.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+      - uses: github/codeql-action/upload-sarif@d6317709a54fd87078d323eeb0e48ec331c8e621 # v3
+        if: always()
+        with: { sarif_file: trivy-filesystem.sarif }
+
+  images:
+    needs: verify
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { name: api, context: apps/server-api, dockerfile: apps/server-api/Dockerfile }
+          - { name: realtime-gateway, context: apps/realtime-gateway, dockerfile: apps/realtime-gateway/Dockerfile }
+          - { name: worker, context: apps/worker, dockerfile: apps/worker/Dockerfile }
+          - { name: web-client, context: ., dockerfile: apps/web-client/Dockerfile }
+          - { name: admin-web, context: ., dockerfile: apps/admin-web/Dockerfile }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c # v3.8.1
+      - id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.name }}:${{ github.ref_name }}
+          labels: org.opencontainers.image.version=${{ github.ref_name }},org.opencontainers.image.revision=${{ github.sha }}
+          sbom: true
+          provenance: mode=max
+      - uses: anchore/sbom-action@61119d458adab75f756bc0b9e4bde25725f86a7a # v0.17.2
+        with:
+          image: ghcr.io/${{ github.repository }}/${{ matrix.name }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: ${{ matrix.name }}.spdx.json
+          upload-artifact: false
+      - uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/${{ matrix.name }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+      - name: Keyless sign image digest
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}/${{ matrix.name }}@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE"
+      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/${{ matrix.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Record immutable image
+        shell: bash
+        run: printf '{"name":"%s","ref":"%s","digest":"%s"}\n' '${{ matrix.name }}' 'ghcr.io/${{ github.repository }}/${{ matrix.name }}' '${{ steps.build.outputs.digest }}' > '${{ matrix.name }}-image.json'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-${{ matrix.name }}
+          path: |
+            ${{ matrix.name }}-image.json
+            ${{ matrix.name }}.spdx.json
+            trivy-${{ matrix.name }}.sarif
+          if-no-files-found: error
+          retention-days: 365
+
+  bundle:
+    needs: verify
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "22" }
+      - uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c # v3.8.1
+      - name: Reproducible bundle
+        env: { SOURCE_DATE_EPOCH: "0" }
+        run: node scripts/build-bundle.mjs
+      - name: Verify sha256 checksum
+        run: cd dist && sha256sum -c *.sha256
+      - uses: anchore/sbom-action@61119d458adab75f756bc0b9e4bde25725f86a7a # v0.17.2
+        with:
+          path: dist
+          format: spdx-json
+          output-file: dist/openspace-bundle.spdx.json
+      - name: Sign bundle and manifest
+        run: |
+          cosign sign-blob --yes --bundle dist/server-bundle.sigstore.json dist/openspace-v*.tar.gz
+      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: dist/openspace-v*.tar.gz
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: server-release
+          path: dist/
+          retention-days: 90
+
+  windows:
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "22" }
+      - run: corepack enable; corepack prepare pnpm@11.21.0 --activate; pnpm install --frozen-lockfile
+      - name: Measure Electron cold start and initial memory
+        run: pnpm --filter @openspace/desktop-win test:performance
+      - name: Validate Electron performance evidence
+        run: node scripts/validate-client-performance-evidence.mjs apps/desktop-win/test-results/client-performance.json
+      - name: Build Authenticode-signed installer
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+        run: |
+          if (-not $env:CSC_LINK) { throw "WINDOWS_CSC_LINK is required" }
+          pnpm --filter @openspace/desktop-win dist
+      - name: Verify Authenticode signature with signtool
+        shell: powershell
+        run: Get-ChildItem apps/desktop-win/release/*.exe | ForEach-Object { signtool verify /pa /all $_.FullName }
+      - name: Download previous signed installer
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_RELEASE: ${{ vars.OPENSPACE_PREVIOUS_RELEASE }}
+        run: |
+          if (-not $env:PREVIOUS_RELEASE) { throw "OPENSPACE_PREVIOUS_RELEASE is required" }
+          New-Item -ItemType Directory -Force previous-installer | Out-Null
+          gh release download $env:PREVIOUS_RELEASE --pattern "*.exe" --dir previous-installer
+          Get-ChildItem previous-installer/*.exe | ForEach-Object { signtool verify /pa /all $_.FullName }
+      - name: Install, upgrade, uninstall, and preserve vault
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File scripts/windows-installer-smoke.ps1 -PreviousInstaller (Get-ChildItem previous-installer/*.exe | Select-Object -First 1).FullName -Installer (Get-ChildItem apps/desktop-win/release/*.exe | Select-Object -First 1).FullName
+      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: apps/desktop-win/release/*.exe
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-release
+          path: |
+            apps/desktop-win/release/*.exe
+            apps/desktop-win/release/*.yml
+            apps/desktop-win/release/*.blockmap
+            apps/desktop-win/test-results/client-performance.json
+          if-no-files-found: error
+          retention-days: 90
+
+  artifact-acceptance:
+    needs: [images, bundle]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "22" }
+      - uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c # v3.8.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { name: server-release, path: artifact-candidate }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { pattern: "image-*", path: artifact-candidate/images, merge-multiple: true }
+      - name: Verify and extract candidate artifacts
+        shell: bash
+        run: |
+          node scripts/finalize-release-manifest.mjs artifact-candidate
+          bundle="$(find artifact-candidate -maxdepth 1 -name 'openspace-v*.tar.gz' -type f -print -quit)"
+          test -n "$bundle"
+          node scripts/verify-release.mjs artifact-candidate/release-manifest.json "$bundle"
+          cosign verify-blob --bundle artifact-candidate/server-bundle.sigstore.json --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${GITHUB_REF_NAME}$" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$bundle"
+          tar -xzf "$bundle" -C artifact-candidate
+          root="$(find artifact-candidate -maxdepth 1 -name 'openspace-v*' -type d -print -quit)"
+          test -n "$root"
+          node "$root/scripts/render-release-images.mjs" artifact-candidate/release-manifest.json "$root/.release-images.env"
+          printf 'ARTIFACT_ROOT=%s\n' "$root" >> "$GITHUB_ENV"
+      - name: Install downloaded immutable candidate
+        shell: bash
+        run: |
+          cd "$ARTIFACT_ROOT"
+          node scripts/setup.mjs --non-interactive --domain localhost --env .env --object-storage-public-endpoint localhost:9000 --livekit-public-url ws://localhost:7880
+          cat > .acceptance-compose.yml <<'YAML'
+          services:
+            api:
+              ports: ["127.0.0.1:8080:8080"]
+              environment:
+                APP_ENV: acceptance
+                STORAGE_PUBLIC_ENDPOINT: localhost:9000
+                STORAGE_PUBLIC_USE_SSL: "false"
+            realtime-gateway:
+              ports: ["127.0.0.1:3001:3001"]
+            livekit:
+              ports: ["127.0.0.1:7880:7880"]
+            minio:
+              ports: ["127.0.0.1:9000:9000"]
+              networks: [data, edge]
+          YAML
+          OPENSPACE_COMPOSE_PROJECT_NAME=openspace-artifact OPENSPACE_COMPOSE_OVERRIDE="$PWD/.acceptance-compose.yml" OPENSPACE_READINESS_URL=http://localhost:8080/readyz bash scripts/deploy-release.sh .env .release-images.env
+      - name: Exercise candidate lifecycle
+        shell: bash
+        env:
+          OPENSPACE_COMPOSE_PROJECT_NAME: openspace-artifact
+          API_URL: http://localhost:8080
+          WS_URL: ws://localhost:3001
+        run: |
+          cd "$ARTIFACT_ROOT"
+          export OPENSPACE_COMPOSE_FILE="$PWD/docker-compose.prod.yml"
+          export OPENSPACE_IMAGES_ENV="$PWD/.release-images.env"
+          node scripts/acceptance/bootstrap.mjs
+          token="$(cat .acceptance/admin-token)"
+          API_TOKEN="$token" node scripts/e2e-text-chat-flow.mjs
+          API_URL=http://localhost:8080 node scripts/acceptance/bootstrap.mjs
+          token="$(cat .acceptance/admin-token)"
+          API_TOKEN="$token" node scripts/e2e-ws-realtime.mjs
+          API_TOKEN="$token" node scripts/e2e-files-dm-room-flow.mjs
+          API_TOKEN="$token" node scripts/e2e-voice-chat-flow.mjs
+          backup="$(node scripts/backup.mjs --env .env --root .acceptance/backups --label artifact-candidate | tail -n 1)"
+          BACKUP_RESULT="$backup" GITHUB_REVISION="$GITHUB_SHA" node --input-type=module -e 'import{writeFileSync}from"node:fs";const backup=JSON.parse(process.env.BACKUP_RESULT);writeFileSync("artifact-acceptance-evidence.json",JSON.stringify({schema:"openspace.artifact-acceptance/v1",revision:process.env.GITHUB_REVISION,status:"passed",backup:{durationSeconds:backup.durationSeconds,objectCount:backup.objectCount,databaseBytes:backup.databaseBytes,objectBytes:backup.objectBytes}},null,2)+"\n")'
+      - name: Retain artifact acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: artifact-acceptance-evidence
+          path: artifact-candidate/openspace-v*/artifact-acceptance-evidence.json
+          if-no-files-found: warn
+          retention-days: 365
+      - name: Clean up candidate
+        if: always()
+        shell: bash
+        run: test -z "${ARTIFACT_ROOT:-}" || (cd "$ARTIFACT_ROOT" && docker compose -p openspace-artifact -f docker-compose.prod.yml --env-file .env --env-file .release-images.env down -v --remove-orphans)
+
+  publish:
+    needs: [images, bundle, windows, artifact-acceptance]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { pattern: "*-release", path: dist, merge-multiple: true }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with: { pattern: "image-*", path: dist/images, merge-multiple: true }
+      - uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c # v3.8.1
+      - run: node scripts/finalize-release-manifest.mjs dist
+      - run: cosign sign-blob --yes --bundle dist/release-manifest-final.sigstore.json dist/release-manifest.json
+      - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with: { subject-path: dist/release-manifest.json }
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          name: OpenSpace ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: dist/**

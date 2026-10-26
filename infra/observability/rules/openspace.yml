@@ -1,0 +1,31 @@
+groups:
+  - name: openspace-slo-recording
+    interval: 30s
+    rules:
+      - record: openspace:scrape_availability:ratio5m
+        expr: avg_over_time(up{job=~"openspace-.*"}[5m])
+      - record: openspace:maintenance_failure_ratio:ratio1h
+        expr: increase(openspace_maintenance_failures_total[1h]) / clamp_min(increase(openspace_maintenance_runs_total[1h]), 1)
+  - name: openspace-alerts
+    rules:
+      - alert: OpenSpaceServiceDown
+        expr: up{job=~"openspace-.*"} == 0
+        for: 2m
+        labels: { severity: critical, slo: availability }
+        annotations:
+          summary: "OpenSpace component is not scrapeable"
+          runbook_url: "docs/runbooks/observability.md#service-down"
+      - alert: OpenSpaceMaintenanceFailures
+        expr: increase(openspace_maintenance_failures_total[15m]) > 0
+        for: 5m
+        labels: { severity: warning, slo: maintenance }
+        annotations:
+          summary: "Maintenance worker recorded a failed job"
+          runbook_url: "docs/runbooks/observability.md#maintenance-failure"
+      - alert: OpenSpaceFastErrorBudgetBurn
+        expr: openspace:scrape_availability:ratio5m < 0.986
+        for: 5m
+        labels: { severity: critical, slo: availability }
+        annotations:
+          summary: "Availability error budget is burning rapidly"
+          runbook_url: "docs/runbooks/observability.md#error-budget-burn"

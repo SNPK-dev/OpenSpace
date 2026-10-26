@@ -1,0 +1,165 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: "15 3 * * 2"
+  workflow_call:
+    inputs:
+      require_external_review:
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+  security-events: write
+
+jobs:
+  go-security:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:44c4ee9810eff91f7eab4d822642e01115b1a9eccce4bcbdde7604752d68eac6
+        env:
+          POSTGRES_USER: openspace
+          POSTGRES_PASSWORD: security-test
+          POSTGRES_DB: openspace_security
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U openspace -d openspace_security"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://openspace:security-test@localhost:5432/openspace_security?sslmode=disable
+      TEST_DATABASE_URL: postgres://openspace:security-test@localhost:5432/openspace_security?sslmode=disable
+      TEST_REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with: { go-version: "1.27.3" }
+      - name: Apply migrations
+        run: (cd apps/server-api && go run ./cmd/migrate-only)
+      - name: Race detector
+        run: |
+          (cd apps/server-api && go test -race ./...)
+          (cd apps/realtime-gateway && go test -race ./...)
+          (cd apps/worker && go test -race ./...)
+      - name: Bounded fuzz smoke
+        run: |
+          (cd apps/server-api && go test ./internal/sessiontoken -run=^$ -fuzz=FuzzValid -fuzztime=30s)
+          (cd apps/realtime-gateway && go test ./internal/gateway -run=^$ -fuzz=FuzzTicketFromProtocols -fuzztime=30s)
+          (cd apps/realtime-gateway && go test ./internal/gateway -run=^$ -fuzz=FuzzOriginPolicy -fuzztime=30s)
+      - name: gosec
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
+          (cd apps/server-api && gosec -fmt sarif -out ../../gosec-server-api.sarif -severity high -confidence medium ./...)
+          (cd apps/realtime-gateway && gosec -fmt sarif -out ../../gosec-realtime-gateway.sarif -severity high -confidence medium ./...)
+          (cd apps/worker && gosec -fmt sarif -out ../../gosec-worker.sarif -severity high -confidence medium ./...)
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          (cd apps/server-api && govulncheck -json ./... > ../../govulncheck-server-api.json)
+          (cd apps/realtime-gateway && govulncheck -json ./... > ../../govulncheck-realtime-gateway.json)
+          (cd apps/worker && govulncheck -json ./... > ../../govulncheck-worker.json)
+      - name: Upload Go scanner evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: go-security-scanner-evidence
+          path: |
+            gosec-*.sarif
+            govulncheck-*.json
+          if-no-files-found: error
+          retention-days: 365
+
+  semgrep:
+    runs-on: ubuntu-24.04
+    container: semgrep/semgrep:1.130.0@sha256:7674a72a8bd5beaa4591b728e5950c04c58b27b82803901f36e7f9d70b828906
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: semgrep
+        run: semgrep scan --config p/owasp-top-ten --config p/golang --config p/typescript --error --severity ERROR --sarif --output semgrep.sarif
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: semgrep-sarif
+          path: semgrep.sarif
+          if-no-files-found: error
+          retention-days: 365
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-24.04
+    permissions: { actions: read, contents: read, security-events: write }
+    strategy: { matrix: { language: [go, javascript-typescript] } }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: github/codeql-action/init@d6317709a54fd87078d323eeb0e48ec331c8e621 # v3
+        with: { languages: "${{ matrix.language }}", queries: security-extended }
+      - uses: github/codeql-action/autobuild@d6317709a54fd87078d323eeb0e48ec331c8e621 # v3
+      - id: analyze
+        uses: github/codeql-action/analyze@d6317709a54fd87078d323eeb0e48ec331c8e621 # v3
+        with:
+          upload: never
+          output: codeql-results/${{ matrix.language }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: codeql-${{ matrix.language }}-sarif
+          path: codeql-results/${{ matrix.language }}
+          if-no-files-found: error
+          retention-days: 365
+
+  gitleaks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc # v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+
+  supported-dependency-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "22" }
+      - run: corepack enable && corepack prepare pnpm@11.21.0 --activate && pnpm install --frozen-lockfile
+      - run: node scripts/security/audit-supported-dependencies.mjs > supported-dependency-audit.json
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: supported-dependency-audit
+          path: supported-dependency-audit.json
+          if-no-files-found: error
+          retention-days: 365
+
+  security-review-evidence:
+    if: inputs.require_external_review
+    runs-on: ubuntu-24.04
+    environment: release-security-review
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Download and verify independent review
+        env:
+          REVIEW_URL: ${{ vars.SECURITY_REVIEW_EVIDENCE_URL }}
+          REVIEW_SHA256: ${{ vars.SECURITY_REVIEW_EVIDENCE_SHA256 }}
+        run: |
+          test -n "$REVIEW_URL" && test -n "$REVIEW_SHA256"
+          curl --proto '=https' --tlsv1.2 --fail --location "$REVIEW_URL" --output security-review.json
+          node scripts/security/verify-independent-review.mjs security-review.json "$REVIEW_SHA256" "$GITHUB_SHA"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: security-review-evidence
+          path: security-review.json
+          retention-days: 365

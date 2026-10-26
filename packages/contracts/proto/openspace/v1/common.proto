@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package openspace.v1;
+
+option go_package = "github.com/openspace/openspace/packages/contracts/gen/go/openspace/v1;openspacev1";
+
+// Server-scoped resource metadata shared by OpenSpace wire contracts.
+message ResourceMeta {
+  string id = 1;
+  string server_id = 2;
+  int64 created_at_unix_ms = 3;
+  int64 updated_at_unix_ms = 4;
+}
+
+message PageRequest {
+  uint32 page_size = 1;
+  string page_token = 2;
+}
+
+message PageInfo {
+  string next_page_token = 1;
+  bool has_more = 2;
+}
+
+message ActorRef {
+  string identity_id = 1;
+  string display_name = 2;
+}

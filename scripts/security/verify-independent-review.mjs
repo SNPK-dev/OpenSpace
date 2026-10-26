@@ -1,0 +1,11 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+const [path, expectedHash, revision] = process.argv.slice(2);
+if (!path || !expectedHash || !revision) throw new Error("usage: verify-independent-review.mjs <report.json> <sha256> <revision>");
+const bytes = readFileSync(path); const actual = createHash("sha256").update(bytes).digest("hex");
+if (actual !== expectedHash.toLowerCase()) throw new Error("independent review checksum mismatch");
+const report = JSON.parse(bytes);
+if (report.schema !== "openspace.security-review/v1" || report.reviewedRevision !== revision) throw new Error("review is not bound to this release revision");
+if (!report.reviewer || !report.organization || !report.reportUrl || !report.reportSha256 || !report.completedAt) throw new Error("independent review evidence is incomplete");
+if (report.findings?.critical !== 0 || report.findings?.high !== 0) throw new Error("independent review has unresolved Critical/High findings");
+console.log(JSON.stringify({ ok: true, reviewer: report.reviewer, organization: report.organization, reviewedRevision: revision }));

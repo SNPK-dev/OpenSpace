@@ -1,0 +1,1 @@
+-- Moved to 022_add_registration_policy.sql

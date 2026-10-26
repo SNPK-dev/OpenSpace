@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" width="240" height="160" fill="none">
+  <circle cx="120" cy="86" r="44" stroke="#E0A33C" stroke-width="1.5" stroke-dasharray="3 4"></circle>
+  <path d="M104 86 L116 98 L138 76" stroke="#E0A33C" stroke-width="1.5" stroke-linecap="square" fill="none" opacity="0.25"></path>
+  <path d="M120 56 V86 L138 96" stroke="#E0A33C" stroke-width="1.5" stroke-linecap="square"></path>
+  <text x="120" y="148" font-family="JetBrains Mono, monospace" font-size="11" fill="#E0A33C" text-anchor="middle" letter-spacing="0.08em">RECONNECTING</text>
+</svg>

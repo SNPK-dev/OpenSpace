@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/SNPK-dev/OpenSpace/security/advisories/new
+    about: Report vulnerabilities privately; never post exploit details or secrets in an issue.

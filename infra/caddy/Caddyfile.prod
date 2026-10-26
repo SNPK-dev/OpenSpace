@@ -1,0 +1,100 @@
+# Production Caddyfile — auto-TLS via Let's Encrypt.
+# Rendered by scripts/render-prod-configs.mjs into .generated/prod/caddy/Caddyfile
+# after substituting {$VARIABLE} placeholders from the environment.
+#
+# Operator requirements:
+#   PUBLIC_BASE_URL  e.g. https://chat.example.com
+#   ADMIN_BASE_URL   e.g. https://chat.example.com/admin  (can share domain)
+#   CADDY_EMAIL      contact email for ACME
+
+{
+  email {$CADDY_EMAIL}
+  admin off
+}
+
+{$PROD_DOMAIN} {
+  # Security headers
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; manifest-src 'self'"
+    Referrer-Policy "no-referrer"
+    Permissions-Policy "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()"
+    Cross-Origin-Opener-Policy "same-origin"
+    -Server
+  }
+
+  # Health check (unauthenticated, for load-balancer probes)
+  handle /healthz {
+    reverse_proxy api:8080
+  }
+
+  handle /readyz {
+    reverse_proxy api:8080
+  }
+
+  # REST API + WebSocket gateway
+  handle /api/* {
+    reverse_proxy api:8080
+  }
+
+  # Server discovery (device registration, federation)
+  handle /.well-known/* {
+    reverse_proxy api:8080
+  }
+
+  handle /ws {
+    reverse_proxy realtime-gateway:3001
+  }
+
+  # LiveKit — WebRTC signalling over HTTPS/WSS
+  handle /livekit/* {
+    uri strip_prefix /livekit
+    reverse_proxy livekit:7880
+  }
+
+  # Admin SPA
+  handle /admin* {
+    reverse_proxy admin-web:8080
+  }
+
+  # Web client SPA (catch-all)
+  handle {
+    reverse_proxy web-client:8080
+  }
+
+  log {
+    output stdout
+    format json
+  }
+}
+
+# Redirect plain HTTP → HTTPS (except healthz for Docker health checks)
+{$FILES_DOMAIN} {
+  reverse_proxy minio:9000
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+    -Server
+  }
+  log {
+    output stdout
+    format json
+  }
+}
+
+http://{$PROD_DOMAIN} {
+  handle /healthz {
+    respond "ok"
+  }
+  redir https://{host}{uri} permanent
+}
+
+# Internal health check endpoint (Docker healthcheck uses http://localhost)
+:80 {
+  handle /healthz {
+    respond "ok"
+  }
+}

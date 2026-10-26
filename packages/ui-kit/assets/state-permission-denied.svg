@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160" width="240" height="160" fill="none">
+  <rect x="76" y="56" width="88" height="68" rx="4" stroke="#6B7280" stroke-width="1.5"></rect>
+  <path d="M88 56 V44 a32 32 0 0 1 64 0 V56" stroke="#6B7280" stroke-width="1.5"></path>
+  <circle cx="120" cy="86" r="4" fill="#6B7280"></circle>
+  <path d="M120 92 V104" stroke="#6B7280" stroke-width="1.5" stroke-linecap="square"></path>
+  <text x="120" y="148" font-family="JetBrains Mono, monospace" font-size="11" fill="#6B7280" text-anchor="middle" letter-spacing="0.08em">NOT PERMITTED</text>
+</svg>

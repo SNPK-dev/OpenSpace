@@ -1,0 +1,33 @@
+{
+  "name": "@openspace/web-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test-vault-crypto.mjs && node --test scripts/vault-persistence.test.ts scripts/vault-large-payload.test.ts scripts/vault-recovery.test.ts",
+    "test:e2e": "node e2e/runner.mjs",
+    "test:unit": "node scripts/test-vault-crypto.mjs && node --test scripts/vault-persistence.test.ts scripts/vault-large-payload.test.ts scripts/vault-recovery.test.ts"
+  },
+  "dependencies": {
+    "@livekit/components-react": "^2.6.7",
+    "@livekit/components-styles": "^1.1.2",
+    "livekit-client": "^2.5.5",
+    "lucide-react": "^1.20.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.2"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.60.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^6.4.3"
+  }
+}

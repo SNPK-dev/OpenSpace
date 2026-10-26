@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package openspace.v1;
+
+option go_package = "github.com/openspace/openspace/packages/contracts/gen/go/openspace/v1;openspacev1";
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_UNAUTHENTICATED = 1;
+  ERROR_CODE_PERMISSION_DENIED = 2;
+  ERROR_CODE_NOT_FOUND = 3;
+  ERROR_CODE_VALIDATION_FAILED = 4;
+  ERROR_CODE_RATE_LIMITED = 5;
+  ERROR_CODE_INTERNAL = 6;
+}
+
+message ContractError {
+  ErrorCode code = 1;
+  string message = 2;
+  bool retryable = 3;
+  string trace_id = 4;
+}

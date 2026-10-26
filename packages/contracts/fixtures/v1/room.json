@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "id": "room_general",
+    "serverId": "server_local_001",
+    "createdAtUnixMs": "1778520000000",
+    "updatedAtUnixMs": "1778520000000"
+  },
+  "categoryId": "category_default",
+  "name": "general",
+  "kind": "ROOM_KIND_TEXT",
+  "position": 1,
+  "archived": false
+}

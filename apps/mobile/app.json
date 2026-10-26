@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "OpenSpace",
+    "slug": "openspace",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "openspace",
+    "platforms": ["ios", "android"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.openspace.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "OpenSpace needs microphone access for voice rooms.",
+        "NSCameraUsageDescription": "OpenSpace needs camera access for video rooms."
+      }
+    },
+    "android": {
+      "package": "com.openspace.app",
+      "permissions": [
+        "RECORD_AUDIO",
+        "CAMERA",
+        "MODIFY_AUDIO_SETTINGS",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
+    },
+    "plugins": [
+      "@livekit/react-native"
+    ]
+  }
+}

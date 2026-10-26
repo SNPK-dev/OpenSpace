@@ -1,0 +1,1 @@
+-- Moved to 019_add_device_credentials.sql

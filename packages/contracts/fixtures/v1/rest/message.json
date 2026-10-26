@@ -1,0 +1,12 @@
+{
+  "id": "msg_001",
+  "channel_id": "ch_001",
+  "sender": {
+    "id": "usr_001",
+    "username": "owner",
+    "display_name": "OpenSpace Owner"
+  },
+  "content": "Welcome to OpenSpace.",
+  "attachment": null,
+  "created_at": "2026-05-13T00:00:00Z"
+}

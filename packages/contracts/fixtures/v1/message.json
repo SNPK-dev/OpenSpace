@@ -1,0 +1,22 @@
+{
+  "meta": {
+    "id": "message_001",
+    "serverId": "server_local_001",
+    "createdAtUnixMs": "1778520100000",
+    "updatedAtUnixMs": "1778520100000"
+  },
+  "roomId": "room_general",
+  "authorIdentityId": "identity_owner_001",
+  "body": "Welcome to OpenSpace.",
+  "editedAtUnixMs": "0",
+  "attachments": [
+    {
+      "attachmentId": "attachment_001",
+      "fileName": "welcome.txt",
+      "mediaType": "text/plain",
+      "sizeBytes": "21",
+      "objectKey": "server_local_001/attachments/attachment_001"
+    }
+  ],
+  "deleted": false
+}

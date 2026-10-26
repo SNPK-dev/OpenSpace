@@ -1,0 +1,38 @@
+# Production coturn config — TURN + TURNS (TLS).
+# Rendered by scripts/render-prod-configs.mjs into .generated/prod/coturn/turnserver.conf
+#
+# Certs are read from Caddy's data volume at the ACME-standard path:
+#   /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/<domain>/<domain>.crt
+#   /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/<domain>/<domain>.key
+# The coturn container mounts caddy-data volume at /data/caddy:ro.
+
+listening-port=3478
+tls-listening-port=5349
+alt-listening-port=0
+
+min-port=MIN_PORT_PLACEHOLDER
+max-port=MAX_PORT_PLACEHOLDER
+
+fingerprint
+use-auth-secret
+static-auth-secret=SECRET_PLACEHOLDER
+realm=REALM_PLACEHOLDER
+
+# TLS certs (shared from Caddy data volume)
+cert=CERT_PATH_PLACEHOLDER
+pkey=KEY_PATH_PLACEHOLDER
+
+# Require TLS/DTLS for relay (TURNS)
+no-tls=false
+no-dtls=false
+
+no-cli
+log-file=stdout
+simple-log
+verbose
+
+no-multicast-peers
+no-loopback-peers
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255

@@ -1,0 +1,12 @@
+{
+  "title": "OpenSpace Operations",
+  "uid": "openspace-operations",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {"type":"stat","title":"Component availability","targets":[{"expr":"openspace:scrape_availability:ratio5m"}],"gridPos":{"h":8,"w":8,"x":0,"y":0}},
+    {"type":"timeseries","title":"Maintenance runs and failures","targets":[{"expr":"rate(openspace_maintenance_runs_total[5m])","legendFormat":"runs"},{"expr":"rate(openspace_maintenance_failures_total[5m])","legendFormat":"failures"}],"gridPos":{"h":8,"w":16,"x":8,"y":0}},
+    {"type":"stat","title":"Objects/records affected","targets":[{"expr":"openspace_maintenance_affected_total"}],"gridPos":{"h":8,"w":8,"x":0,"y":8}},
+    {"type":"timeseries","title":"RTC joins","targets":[{"expr":"rate(openspace_rtc_voice_joins_total[5m])"}],"gridPos":{"h":8,"w":16,"x":8,"y":8}}
+  ]
+}

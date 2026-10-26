@@ -1,0 +1,54 @@
+{
+  admin off
+}
+
+{$LAN_DOMAIN} {
+  tls internal
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; manifest-src 'self'"
+    Referrer-Policy "no-referrer"
+    Permissions-Policy "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()"
+    Cross-Origin-Opener-Policy "same-origin"
+    -Server
+  }
+  handle /healthz {
+    reverse_proxy api:8080
+  }
+  handle /readyz {
+    reverse_proxy api:8080
+  }
+  handle /api/* {
+    reverse_proxy api:8080
+  }
+  handle /.well-known/* {
+    reverse_proxy api:8080
+  }
+  handle /ws {
+    reverse_proxy realtime-gateway:3001
+  }
+  handle /livekit/* {
+    uri strip_prefix /livekit
+    reverse_proxy livekit:7880
+  }
+  handle /admin {
+    redir /admin/ 308
+  }
+  handle /admin* {
+    reverse_proxy admin-web:8080
+  }
+  handle {
+    reverse_proxy web-client:8080
+  }
+}
+
+{$LAN_FILES_DOMAIN} {
+  tls internal
+  reverse_proxy minio:9000
+  header {
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+    -Server
+  }
+}

@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package openspace.v1;
+
+import "openspace/v1/common.proto";
+
+option go_package = "github.com/openspace/openspace/packages/contracts/gen/go/openspace/v1;openspacev1";
+
+message Message {
+  ResourceMeta meta = 1;
+  string room_id = 3;
+  string author_identity_id = 4;
+  string body = 5;
+  int64 edited_at_unix_ms = 6;
+  repeated AttachmentRef attachments = 7;
+  bool deleted = 8;
+}
+
+message AttachmentRef {
+  string attachment_id = 1;
+  string file_name = 2;
+  string media_type = 3;
+  uint64 size_bytes = 4;
+  string object_key = 5;
+}

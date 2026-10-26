@@ -1,0 +1,10 @@
+name: Public source hygiene
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  source-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: python3 scripts/check-public-tree.py

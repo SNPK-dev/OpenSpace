@@ -1,0 +1,25 @@
+{
+  "eventId": "event_001",
+  "serverId": "server_local_001",
+  "streamId": "room_general",
+  "sequence": "1",
+  "occurredAtUnixMs": "1778520100000",
+  "traceId": "trace_contract_fixture_001",
+  "actorIdentityId": "identity_owner_001",
+  "messageCreated": {
+    "message": {
+      "meta": {
+        "id": "message_001",
+        "serverId": "server_local_001",
+        "createdAtUnixMs": "1778520100000",
+        "updatedAtUnixMs": "1778520100000"
+      },
+      "roomId": "room_general",
+      "authorIdentityId": "identity_owner_001",
+      "body": "Welcome to OpenSpace.",
+      "editedAtUnixMs": "0",
+      "attachments": [],
+      "deleted": false
+    }
+  }
+}

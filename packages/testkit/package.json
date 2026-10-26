@@ -1,0 +1,11 @@
+{
+  "name": "@openspace/testkit",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node ../../scripts/validate-non-runtime-package.mjs packages/testkit",
+    "lint": "node ../../scripts/validate-non-runtime-package.mjs packages/testkit",
+    "test": "node ../../scripts/validate-non-runtime-package.mjs packages/testkit",
+    "typecheck": "node ../../scripts/validate-non-runtime-package.mjs packages/testkit"
+  }
+}

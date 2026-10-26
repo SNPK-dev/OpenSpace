@@ -1,0 +1,7 @@
+{
+  "id": "usr_001",
+  "username": "owner",
+  "display_name": "OpenSpace Owner",
+  "email": null,
+  "roles": ["owner"]
+}

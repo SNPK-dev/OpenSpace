@@ -1,0 +1,11 @@
+{
+  "name": "@openspace/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node ../../scripts/validate-non-runtime-package.mjs packages/sdk",
+    "lint": "node ../../scripts/validate-non-runtime-package.mjs packages/sdk",
+    "test": "node ../../scripts/validate-non-runtime-package.mjs packages/sdk",
+    "typecheck": "node ../../scripts/validate-non-runtime-package.mjs packages/sdk"
+  }
+}

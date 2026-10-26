@@ -1,0 +1,16 @@
+name: Feature request
+description: Propose a focused product improvement
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes: { label: Problem, description: "Describe the user/operator problem, not only a solution." }
+    validations: { required: true }
+  - type: textarea
+    id: outcome
+    attributes: { label: Desired outcome and acceptance criteria }
+    validations: { required: true }
+  - type: textarea
+    id: alternatives
+    attributes: { label: Alternatives and operational/security impact }

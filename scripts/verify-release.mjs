@@ -1,0 +1,14 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+const [manifestPath, artifactPath] = process.argv.slice(2);
+if (!manifestPath || !artifactPath) throw new Error("usage: verify-release.mjs <release-manifest.json> <artifact>");
+const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+if (manifest.schema !== "openspace.release/v1") throw new Error("unsupported release manifest");
+const normalized = artifactPath.replaceAll("\\", "/");
+const basename = normalized.split("/").at(-1);
+const candidates = manifest.artifacts.filter((item) => item.name === normalized || item.name === basename || item.name.endsWith(`/${basename}`));
+if (candidates.length !== 1) throw new Error(candidates.length ? `ambiguous artifact in manifest: ${basename}` : `artifact absent from manifest: ${basename}`);
+const expected = candidates[0];
+const actual = createHash("sha256").update(readFileSync(artifactPath)).digest("hex");
+if (actual !== expected.sha256) throw new Error(`checksum mismatch for ${expected.name}`);
+console.log(JSON.stringify({ ok: true, artifact: expected.name, sha256: actual }));

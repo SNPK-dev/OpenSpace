@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: OpenSpace
+    folder: OpenSpace
+    type: file
+    editable: false
+    options: { path: /var/lib/grafana/dashboards }

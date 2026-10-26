@@ -1,0 +1,16 @@
+{
+  "name": "@openspace/ui-kit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OpenSpace design system — Liquid Glass tokens, assets, component primitives.",
+  "exports": {
+    "./tokens.css": "./src/tokens.css",
+    "./assets/*": "./assets/*"
+  },
+  "scripts": {
+    "build": "node ../../scripts/validate-non-runtime-package.mjs packages/ui-kit",
+    "lint": "node ../../scripts/validate-non-runtime-package.mjs packages/ui-kit",
+    "test": "node ../../scripts/validate-non-runtime-package.mjs packages/ui-kit",
+    "typecheck": "node ../../scripts/validate-non-runtime-package.mjs packages/ui-kit"
+  }
+}

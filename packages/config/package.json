@@ -1,0 +1,11 @@
+{
+  "name": "@openspace/config",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node ../../scripts/validate-non-runtime-package.mjs packages/config",
+    "lint": "node ../../scripts/validate-non-runtime-package.mjs packages/config",
+    "test": "node ../../scripts/validate-non-runtime-package.mjs packages/config",
+    "typecheck": "node ../../scripts/validate-non-runtime-package.mjs packages/config"
+  }
+}

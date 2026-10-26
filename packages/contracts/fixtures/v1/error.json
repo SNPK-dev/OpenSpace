@@ -1,0 +1,6 @@
+{
+  "code": "ERROR_CODE_PERMISSION_DENIED",
+  "message": "Permission denied.",
+  "retryable": false,
+  "traceId": "trace_contract_fixture_error_001"
+}

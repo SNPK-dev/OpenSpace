@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package openspace.v1;
+
+import "openspace/v1/common.proto";
+
+option go_package = "github.com/openspace/openspace/packages/contracts/gen/go/openspace/v1;openspacev1";
+
+message ServerIdentity {
+  ResourceMeta meta = 1;
+  string handle = 2;
+  string display_name = 3;
+  string avatar_url = 4;
+  repeated string role_ids = 5;
+  bool disabled = 6;
+}

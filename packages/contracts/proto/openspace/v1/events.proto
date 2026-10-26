@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package openspace.v1;
+
+import "openspace/v1/errors.proto";
+import "openspace/v1/message.proto";
+import "openspace/v1/room.proto";
+
+option go_package = "github.com/openspace/openspace/packages/contracts/gen/go/openspace/v1;openspacev1";
+
+enum PresenceState {
+  PRESENCE_STATE_UNSPECIFIED = 0;
+  PRESENCE_STATE_OFFLINE = 1;
+  PRESENCE_STATE_ONLINE = 2;
+  PRESENCE_STATE_IDLE = 3;
+  PRESENCE_STATE_DO_NOT_DISTURB = 4;
+}
+
+message RealtimeEvent {
+  string event_id = 1;
+  string server_id = 2;
+  string stream_id = 3;
+  uint64 sequence = 4;
+  int64 occurred_at_unix_ms = 5;
+  string trace_id = 6;
+  string actor_identity_id = 7;
+
+  oneof payload {
+    MessageCreatedEvent message_created = 20;
+    MessageUpdatedEvent message_updated = 21;
+    MessageDeletedEvent message_deleted = 22;
+    RoomUpdatedEvent room_updated = 30;
+    PresenceChangedEvent presence_changed = 40;
+    TypingStartedEvent typing_started = 41;
+    TypingStoppedEvent typing_stopped = 42;
+    ContractError error = 90;
+  }
+}
+
+message MessageCreatedEvent {
+  Message message = 1;
+}
+
+message MessageUpdatedEvent {
+  Message message = 1;
+}
+
+message MessageDeletedEvent {
+  string message_id = 1;
+  string room_id = 2;
+  int64 deleted_at_unix_ms = 3;
+}
+
+message RoomUpdatedEvent {
+  Room room = 1;
+}
+
+message PresenceChangedEvent {
+  string identity_id = 1;
+  PresenceState state = 2;
+  int64 changed_at_unix_ms = 3;
+}
+
+message TypingStartedEvent {
+  string room_id = 1;
+  string identity_id = 2;
+  int64 started_at_unix_ms = 3;
+}
+
+message TypingStoppedEvent {
+  string room_id = 1;
+  string identity_id = 2;
+  int64 stopped_at_unix_ms = 3;
+}

@@ -1,0 +1,13 @@
+{
+  "token": "0000000000000000000000000000000000000000000000000000000000000000",
+  "identity": {
+    "id": "usr_001",
+    "username": "e2e_admin",
+    "display_name": "e2e_admin",
+    "roles": [
+      "owner"
+    ],
+    "is_disabled": false,
+    "created_at": "2026-01-01T00:00:00Z"
+  }
+}

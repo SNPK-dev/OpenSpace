@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master", "update_list", "codex/**"]
+  pull_request:
+    branches: ["main", "master", "update_list"]
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: |
+            apps/server-api/go.sum
+            apps/realtime-gateway/go.sum
+            apps/worker/go.sum
+
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@11.21.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run verify chain
+        run: pnpm verify
+
+      - name: Enforce supported-client production budgets
+        run: pnpm client:budgets
+
+      - name: Run Go race detector
+        run: |
+          (cd apps/server-api && go test -race ./...)
+          (cd apps/realtime-gateway && go test -race ./...)
+          (cd apps/worker && go test -race ./...)
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build api image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ./apps/server-api
+          push: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build realtime-gateway image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ./apps/realtime-gateway
+          push: false
+          cache-from: type=gha,scope=realtime-gateway
+          cache-to: type=gha,mode=max,scope=realtime-gateway
+
+      - name: Build worker image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ./apps/worker
+          push: false
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+
+  system-e2e:
+    name: Provisioned system E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install pnpm and dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.21.0 --activate
+          pnpm install --frozen-lockfile
+
+      - name: Render and start integration stack
+        run: |
+          node scripts/render-dev-configs.mjs .env.example
+          docker compose --env-file .env.example up -d --build
+
+      - name: Wait for API readiness and bootstrap admin
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:8080/healthz >/dev/null; then break; fi
+            if [ "$attempt" = 60 ]; then docker compose logs; exit 1; fi
+            sleep 2
+          done
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs'
+          const api = 'http://localhost:8080'
+          const credentials = { server_name: 'OpenSpace CI', admin_username: 'ci_admin', admin_email: 'ci@example.test', admin_password: 'CiAdminPass123!' }
+          let response = await fetch(`${api}/api/v1/bootstrap`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(credentials) })
+          let body = await response.json()
+          if (response.status === 409) {
+            response = await fetch(`${api}/api/v1/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: credentials.admin_username, password: credentials.admin_password }) })
+            body = await response.json()
+          }
+          if (typeof body.token === 'string') console.log(`::add-mask::${body.token}`)
+          if (!response.ok || typeof body.token !== 'string') throw new Error(`bootstrap/login failed: HTTP ${response.status}`)
+          appendFileSync(process.env.GITHUB_ENV, `ADMIN_API_TOKEN=${body.token}\nAPI_URL=${api}\n`)
+          NODE
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @openspace/web-client exec playwright install --with-deps chromium
+
+      - name: Run required browser E2E
+        run: |
+          pnpm --filter @openspace/admin-web test:e2e
+          pnpm --filter @openspace/web-client test:e2e
+          pnpm --filter @openspace/desktop-win test:e2e
+
+      - name: Validate voice memory evidence
+        run: node scripts/validate-client-performance-evidence.mjs apps/desktop-win/test-results/client-performance/voice-memory.json
+
+      - name: Upload client performance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: client-performance-system-e2e
+          path: apps/desktop-win/test-results/client-performance/*.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Run recovery and maintenance drills
+        run: |
+          node scripts/recovery-drill.mjs
+          node scripts/maintenance-drill.mjs
+
+      - name: Collect service logs on failure
+        if: failure()
+        run: docker compose --env-file .env.example logs --no-color > system-e2e-services.log
+
+      - name: Upload E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: system-e2e-diagnostics
+          path: |
+            system-e2e-services.log
+            apps/*/playwright-report/
+            apps/*/test-results/
+
+      - name: Stop integration stack
+        if: always()
+        run: docker compose --env-file .env.example down -v

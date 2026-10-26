@@ -1,0 +1,32 @@
+:80 {
+  handle /healthz {
+    respond "ok"
+  }
+
+  handle /api/* {
+    reverse_proxy api:8080
+  }
+
+  # Server discovery (device registration, federation)
+  handle /.well-known/* {
+    reverse_proxy api:8080
+  }
+
+  handle /ws {
+    reverse_proxy realtime-gateway:3001
+  }
+
+  # LiveKit HTTP/WS — strip prefix before forwarding
+  handle /livekit/* {
+    uri strip_prefix /livekit
+    reverse_proxy livekit:7880
+  }
+
+  handle /admin* {
+    reverse_proxy admin-web:8080
+  }
+
+  handle {
+    reverse_proxy web-client:8080
+  }
+}

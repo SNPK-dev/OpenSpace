@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 32" width="200" height="32" fill="none" aria-label="OpenSpace">
+  <g transform="translate(0,4)">
+    <path d="M3 3 H15 M3 3 V21 H21 V9" stroke="#4DA3FF" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter" fill="none"></path>
+    <rect x="10" y="10" width="4" height="4" fill="#4DA3FF"></rect>
+  </g>
+  <text x="36" y="22" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="600" letter-spacing="-0.01em" fill="#E6EAF2">OpenSpace</text>
+</svg>

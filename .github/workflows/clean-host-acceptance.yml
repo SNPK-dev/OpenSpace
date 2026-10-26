@@ -1,0 +1,89 @@
+name: Clean host acceptance
+
+on:
+  workflow_call:
+    inputs:
+      previous_release:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      previous_release:
+        description: Previous stable Git tag used by upgrade/rollback
+        required: true
+        type: string
+  schedule:
+    - cron: "30 2 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  clean-host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      PREVIOUS_RELEASE: ${{ inputs.previous_release || vars.OPENSPACE_PREVIOUS_RELEASE }}
+      OPENSPACE_ACCEPT_HOST_BASELINE_CMD: test "$(. /etc/os-release; echo $ID-$VERSION_ID)" = ubuntu-24.04 && test "$(uname -m)" = x86_64
+      OPENSPACE_ACCEPT_INSTALL_CMD: corepack enable && pnpm install --frozen-lockfile && node scripts/render-dev-configs.mjs .env.example && docker compose --env-file .env.example up -d --build
+      OPENSPACE_ACCEPT_SOCKET_POLICY_CMD: node scripts/validate-prod-topology.mjs
+      OPENSPACE_ACCEPT_BOOTSTRAP_CMD: node scripts/acceptance/bootstrap.mjs
+      OPENSPACE_ACCEPT_CHAT_CMD: API_TOKEN=$(cat .acceptance/admin-token) node scripts/e2e-text-chat-flow.mjs && node scripts/acceptance/bootstrap.mjs
+      OPENSPACE_ACCEPT_WEBSOCKET_RECONNECT_CMD: API_TOKEN=$(cat .acceptance/admin-token) node scripts/e2e-ws-realtime.mjs
+      OPENSPACE_ACCEPT_ATTACHMENT_ROUNDTRIP_CMD: API_TOKEN=$(cat .acceptance/admin-token) node scripts/e2e-files-dm-room-flow.mjs
+      OPENSPACE_ACCEPT_VOICE_LOCAL_CMD: API_TOKEN=$(cat .acceptance/admin-token) node scripts/e2e-voice-chat-flow.mjs
+      OPENSPACE_ACCEPT_BACKUP_CMD: node scripts/backup.mjs --env .env.example --root .acceptance/backups --label clean-host
+      OPENSPACE_ACCEPT_INDEPENDENT_RESTORE_CMD: node scripts/recovery-drill.mjs
+      OPENSPACE_ACCEPT_PREVIOUS_VERSION_UPGRADE_CMD: test -n "$PREVIOUS_RELEASE" && node scripts/acceptance/release-transition.mjs --previous "$PREVIOUS_RELEASE" --upgrade-only
+      OPENSPACE_ACCEPT_ROLLBACK_CMD: test -n "$PREVIOUS_RELEASE" && node scripts/acceptance/release-transition.mjs --previous "$PREVIOUS_RELEASE" --rollback-only
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "22" }
+      - name: Enable package manager
+        run: corepack enable
+      - name: Run clean-host lifecycle
+        run: node scripts/acceptance/clean-host.mjs --output .acceptance/acceptance-evidence.json
+      - name: Upload acceptance-evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: clean-host-acceptance-evidence
+          path: .acceptance/acceptance-evidence.json
+          if-no-files-found: warn
+          retention-days: 90
+      - if: always()
+        run: docker compose --env-file .env.example down -v || true
+
+  public-network:
+    runs-on: ubuntu-24.04
+    environment: release-staging
+    timeout-minutes: 30
+    env:
+      OPENSPACE_ACCEPT_STAGING_DEPLOY_CMD: ${{ secrets.OPENSPACE_STAGING_DEPLOY_COMMAND }}
+      OPENSPACE_ACCEPT_DNS_CMD: node scripts/check-domain.mjs .release-staging.env
+      OPENSPACE_ACCEPT_TLS_CMD: curl --fail --silent --show-error "https://${OPENSPACE_STAGING_HOST}/healthz" >/dev/null
+      OPENSPACE_ACCEPT_WSS_CMD: node scripts/acceptance/public-wss.mjs "wss://${OPENSPACE_STAGING_HOST}/ws"
+      OPENSPACE_ACCEPT_SOCKET_POLICY_CMD: node scripts/acceptance/public-ports.mjs "$OPENSPACE_STAGING_HOST"
+      OPENSPACE_ACCEPT_TURN_ONLY_CALL_CMD: ${{ secrets.OPENSPACE_TURN_ONLY_PROBE_COMMAND }}
+      OPENSPACE_STAGING_HOST: ${{ vars.OPENSPACE_STAGING_HOST }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: "22" }
+      - name: Configure staging probe
+        shell: bash
+        env:
+          STAGING_ENV: ${{ secrets.OPENSPACE_STAGING_ENV }}
+        run: test -n "$STAGING_ENV" && printf '%s' "$STAGING_ENV" > .release-staging.env && chmod 600 .release-staging.env
+      - name: Run public DNS TLS WSS socket and turn-only-call gate
+        run: node scripts/acceptance/clean-host.mjs --public --output .acceptance/public-evidence.json
+      - name: Upload acceptance-evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: public-acceptance-evidence
+          path: .acceptance/public-evidence.json
+          if-no-files-found: warn
+          retention-days: 90
